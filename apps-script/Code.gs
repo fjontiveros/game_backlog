@@ -163,8 +163,9 @@ function actionAdd_(body) {
     ttb = Math.round(ttb * 10) / 10;
   }
   // Solo carátulas de Wikipedia/Wikimedia (lo que trae el autocompletado).
-  const cover = body.cover ? String(body.cover) : '';
-  if (cover && (cover.length > 500 || !/^https:\/\/upload\.wikimedia\.org\/wikipedia\/[A-Za-z0-9_\-.\/%(),!~]+$/.test(cover))) {
+  // Se descarta lo que venga después de "?" o "#" (Wikipedia agrega "?utm_source=…").
+  const cover = body.cover ? String(body.cover).split(/[?#]/)[0] : '';
+  if (cover && (cover.length > 500 || !/^https:\/\/(upload|thumb)\.wikimedia\.org\/wikipedia\/[A-Za-z0-9_\-.\/%(),!~]+$/.test(cover))) {
     throw new UserError('Carátula inválida.');
   }
 

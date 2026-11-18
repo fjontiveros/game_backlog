@@ -146,7 +146,10 @@ export interface WikiResult {
 
 export class SearchError extends Error {}
 
-const isGame = (description?: string) => /\bvideo game$/i.test(description ?? '')
+/** Wikipedia agrega "?utm_source=…" a las imágenes: lo sacamos (no hace falta). */
+const cleanImageUrl = (url?: string) => (url ? url.split(/[?#]/)[0] : null)
+
+const isGame =(description?: string) => /\bvideo game$/i.test(description ?? '')
 
 /** Busca juegos en Wikipedia: nombre, año y carátula. Sin claves ni cuentas. */
 export async function searchWikipedia(q: string, signal?: AbortSignal): Promise<WikiResult[]> {
@@ -187,7 +190,7 @@ export async function searchWikipedia(q: string, signal?: AbortSignal): Promise<
         name: p.title.replace(/\s*\((?:\d{4} )?video game\)$/i, ''),
         description: p.description ?? null,
         year: Number(p.description?.match(/\b(19[7-9]\d|20\d\d)\b/)?.[1]) || null,
-        cover: p.thumbnail?.source ?? null,
+        cover: cleanImageUrl(p.thumbnail?.source),
       }
     })
 }
