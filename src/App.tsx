@@ -10,6 +10,7 @@ import { Toast, type ToastData } from './components/Toast'
 import { AddGameDialog } from './components/AddGameDialog'
 import { knownPlatforms } from './platforms'
 import { StatsView } from './components/Stats'
+import { BacklogSimulator } from './components/BacklogSimulator'
 
 type Shelf = Exclude<Status, 'in_progress'>
 
@@ -288,6 +289,14 @@ export default function App() {
                 </div>
               )}
             </section>
+
+            {!firstLoad && (
+              <BacklogSimulator
+                pending={groups.pending}
+                playing={[...groups.in_progress, ...groups.paused]}
+                completed={groups.completed}
+              />
+            )}
 
             {/* Estantes: pendientes / completados / abandonados */}
             <section>
