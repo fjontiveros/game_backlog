@@ -9,6 +9,7 @@ import { CompleteDialog } from './components/CompleteDialog'
 import { Toast, type ToastData } from './components/Toast'
 import { AddGameDialog } from './components/AddGameDialog'
 import { knownPlatforms } from './platforms'
+import { StatsView } from './components/Stats'
 
 type Shelf = Exclude<Status, 'in_progress'>
 
@@ -17,6 +18,9 @@ const SHELVES: { key: Shelf; label: string; empty: string; hint: (hours: number)
   { key: 'completed', label: 'Completados', empty: 'Todavía no terminaste ninguno.', hint: (h) => `≈ ${h} h jugadas` },
   { key: 'abandoned', label: 'Abandonados', empty: 'Nada abandonado.', hint: () => '' },
 ]
+
+type View = 'backlog' | 'stats'
+const viewFromHash = (): View => (location.hash === '#stats' ? 'stats' : 'backlog')
 
 const sumHours = (games: Game[]) => Math.round(games.reduce((acc, g) => acc + (g.timeToBeat ?? 0), 0))
 
@@ -31,6 +35,20 @@ export default function App() {
   const [addOpen, setAddOpen] = useState(false)
   const [toast, setToast] = useState<ToastData | null>(null)
   const canEdit = !usingSampleData && !!token
+  const [view, setViewState] = useState<View>(viewFromHash)
+
+  // La vista vive en la URL (#stats) para poder volver con "atrás" o compartir el link.
+  useEffect(() => {
+    const onHash = () => setViewState(viewFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+  const setView = (v: View) => {
+    if (v === view) return
+    if (v === 'stats') location.hash = 'stats'
+    else history.pushState(null, '', location.pathname + location.search)
+    setViewState(v)
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -214,84 +232,112 @@ export default function App() {
           </Notice>
         )}
 
-        {/* Jugando ahora */}
-        <section className="mb-12">
-          <SectionTitle>Jugando ahora</SectionTitle>
-          {firstLoad ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div className="h-48 animate-pulse rounded-3xl bg-zinc-900" />
-            </div>
-          ) : groups.in_progress.length === 0 ? (
-            <p className="rounded-3xl border border-dashed border-white/10 px-6 py-10 text-center text-zinc-400">
-              No estás jugando nada. ¿Arrancás alguno de tus pendientes?
-            </p>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {groups.in_progress.map((g) => (
-                <NowPlayingCard key={g.id ?? `row-${g.row}`} game={g} onComplete={canEdit && g.id ? () => setCompleting(g) : undefined} />
-              ))}
-            </div>
-          )}
+        <nav className="mb-8 inline-flex gap-1 rounded-full bg-zinc-900/80 p-1 ring-1 ring-white/10" aria-label="Vista">
+          {(
+            [
+              ['backlog', '🎮 Backlog'],
+              ['stats', '📊 Estadísticas'],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              aria-pressed={view === v}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${view === v ? 'bg-white text-zinc-900 shadow' : 'text-zinc-400 hover:text-white'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
 
-          {groups.paused.length > 0 && (
-            <div className="mt-6">
-              <h3 className="mb-3 text-sm font-medium text-zinc-400">En pausa</h3>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {groups.paused.map((g) => (
-                  <NowPlayingCard key={g.id ?? `row-${g.row}`} game={g} paused />
-                ))}
+        {view === 'stats' ? (
+          firstLoad ? (
+            <div className="h-64 animate-pulse rounded-3xl bg-zinc-900" />
+          ) : (
+            <StatsView games={games} />
+          )
+        ) : (
+          <>
+            {/* Jugando ahora */}
+            <section className="mb-12">
+              <SectionTitle>Jugando ahora</SectionTitle>
+              {firstLoad ? (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="h-48 animate-pulse rounded-3xl bg-zinc-900" />
+                </div>
+              ) : groups.in_progress.length === 0 ? (
+                <p className="rounded-3xl border border-dashed border-white/10 px-6 py-10 text-center text-zinc-400">
+                  No estás jugando nada. ¿Arrancás alguno de tus pendientes?
+                </p>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {groups.in_progress.map((g) => (
+                    <NowPlayingCard key={g.id ?? `row-${g.row}`} game={g} onComplete={canEdit && g.id ? () => setCompleting(g) : undefined} />
+                  ))}
+                </div>
+              )}
+
+              {groups.paused.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="mb-3 text-sm font-medium text-zinc-400">En pausa</h3>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {groups.paused.map((g) => (
+                      <NowPlayingCard key={g.id ?? `row-${g.row}`} game={g} paused />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* Estantes: pendientes / completados / abandonados */}
+            <section>
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <nav className="grid w-full grid-cols-3 gap-1 rounded-full bg-zinc-900/80 p-1 ring-1 ring-white/10 sm:flex sm:w-auto" aria-label="Estado">
+                  {SHELVES.map((s) => (
+                    <button
+                      key={s.key}
+                      onClick={() => setShelf(s.key)}
+                      aria-pressed={shelf === s.key}
+                      className={`rounded-full px-2 py-1.5 text-[13px] font-medium whitespace-nowrap transition sm:px-4 sm:text-sm ${
+                        shelf === s.key ? 'bg-white text-zinc-900 shadow' : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {s.label}
+                      <span className={`ml-1.5 tabular-nums ${shelf === s.key ? 'text-zinc-500' : 'text-zinc-600'}`}>
+                        {groups[s.key].length}
+                      </span>
+                    </button>
+                  ))}
+                </nav>
+                {shelfGames.length > 0 && current.hint(sumHours(shelfGames)) && (
+                  <p className="text-sm text-zinc-500">{current.hint(sumHours(shelfGames))}</p>
+                )}
               </div>
-            </div>
-          )}
-        </section>
 
-        {/* Estantes: pendientes / completados / abandonados */}
-        <section>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <nav className="grid w-full grid-cols-3 gap-1 rounded-full bg-zinc-900/80 p-1 ring-1 ring-white/10 sm:flex sm:w-auto" aria-label="Estado">
-              {SHELVES.map((s) => (
-                <button
-                  key={s.key}
-                  onClick={() => setShelf(s.key)}
-                  aria-pressed={shelf === s.key}
-                  className={`rounded-full px-2 py-1.5 text-[13px] font-medium whitespace-nowrap transition sm:px-4 sm:text-sm ${
-                    shelf === s.key ? 'bg-white text-zinc-900 shadow' : 'text-zinc-400 hover:text-white'
-                  }`}
-                >
-                  {s.label}
-                  <span className={`ml-1.5 tabular-nums ${shelf === s.key ? 'text-zinc-500' : 'text-zinc-600'}`}>
-                    {groups[s.key].length}
-                  </span>
-                </button>
-              ))}
-            </nav>
-            {shelfGames.length > 0 && current.hint(sumHours(shelfGames)) && (
-              <p className="text-sm text-zinc-500">{current.hint(sumHours(shelfGames))}</p>
-            )}
-          </div>
-
-          {firstLoad ? (
-            <Grid>
-              {Array.from({ length: 6 }, (_, i) => (
-                <div key={i} className="aspect-[2/3] animate-pulse rounded-2xl bg-zinc-900" />
-              ))}
-            </Grid>
-          ) : shelfGames.length === 0 ? (
-            <p className="rounded-3xl border border-dashed border-white/10 px-6 py-16 text-center text-zinc-400">{current.empty}</p>
-          ) : (
-            <Grid>
-              {shelfGames.map((g, i) => (
-                <GameCard
-                  key={g.id ?? `row-${g.row}`}
-                  game={g}
-                  status={shelf}
-                  position={i + 1}
-                  onStart={canEdit && shelf === 'pending' && g.id ? () => void startGame(g) : undefined}
-                />
-              ))}
-            </Grid>
-          )}
-        </section>
+              {firstLoad ? (
+                <Grid>
+                  {Array.from({ length: 6 }, (_, i) => (
+                    <div key={i} className="aspect-[2/3] animate-pulse rounded-2xl bg-zinc-900" />
+                  ))}
+                </Grid>
+              ) : shelfGames.length === 0 ? (
+                <p className="rounded-3xl border border-dashed border-white/10 px-6 py-16 text-center text-zinc-400">{current.empty}</p>
+              ) : (
+                <Grid>
+                  {shelfGames.map((g, i) => (
+                    <GameCard
+                      key={g.id ?? `row-${g.row}`}
+                      game={g}
+                      status={shelf}
+                      position={i + 1}
+                      onStart={canEdit && shelf === 'pending' && g.id ? () => void startGame(g) : undefined}
+                    />
+                  ))}
+                </Grid>
+              )}
+            </section>
+          </>
+        )}
 
         <footer className="mt-16 text-center text-xs text-zinc-600">Carátulas: Wikipedia</footer>
       </div>
