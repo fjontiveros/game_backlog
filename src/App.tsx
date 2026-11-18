@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Game, Status } from './types'
-import { ApiError, cachedGames, fetchGames, getToken, postAction, saveCache, setToken, usingSampleData, type Action } from './api'
+import { ApiError, cachedGames, fetchGames, getToken, postAction, saveCache, setToken, usingSampleData, type Action, type NewGame } from './api'
 import { groupByStatus, isoDaysAgo } from './games'
 import { GameCard } from './components/GameCard'
 import { NowPlayingCard } from './components/NowPlaying'
 import { UnlockDialog } from './components/UnlockDialog'
 import { CompleteDialog } from './components/CompleteDialog'
 import { Toast, type ToastData } from './components/Toast'
+import { AddGameDialog } from './components/AddGameDialog'
+import { knownPlatforms } from './platforms'
 
 type Shelf = Exclude<Status, 'in_progress'>
 
@@ -26,8 +28,25 @@ export default function App() {
   const [token, setTokenState] = useState<string | null>(getToken)
   const [unlockOpen, setUnlockOpen] = useState(false)
   const [completing, setCompleting] = useState<Game | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
   const [toast, setToast] = useState<ToastData | null>(null)
   const canEdit = !usingSampleData && !!token
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      setGames(await fetchGames())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo cargar la planilla')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   const notify = useCallback((t: Omit<ToastData, 'id'>) => setToast({ ...t, id: Date.now() }), [])
   const dismissToast = useCallback(() => setToast(null), [])
@@ -68,6 +87,31 @@ export default function App() {
     [token, notify, saveToken],
   )
 
+  const lockAfterUnauthorized = useCallback(() => {
+    saveToken(null)
+    setAddOpen(false)
+    notify({ tone: 'error', message: 'El token ya no es válido. Activá la edición de nuevo.' })
+  }, [saveToken, notify])
+
+  /** Agrega el juego y recarga la lista (cambian los "Orden" de la cola). */
+  const addGame = useCallback(
+    async (newGame: NewGame): Promise<string | null> => {
+      if (!token) return 'Activá la edición primero.'
+      try {
+        const game = await postAction('add', token, newGame)
+        setAddOpen(false)
+        setShelf('pending')
+        notify({ tone: 'success', message: `Agregaste ${game?.title ?? newGame.title} (#${newGame.position} en Pendientes)` })
+        void load()
+        return null
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'unauthorized') lockAfterUnauthorized()
+        return e instanceof Error ? e.message : 'No se pudo agregar.'
+      }
+    },
+    [token, notify, load, lockAfterUnauthorized],
+  )
+
   const startGame = useCallback(
     async (game: Game) => {
       const updated = await mutate(game, 'start', { startDate: isoDaysAgo(0) }, isoDaysAgo(0))
@@ -95,23 +139,9 @@ export default function App() {
     [mutate, notify],
   )
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      setGames(await fetchGames())
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo cargar la planilla')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-  }, [load])
 
   const groups = useMemo(() => groupByStatus(games), [games])
+  const platforms = useMemo(() => knownPlatforms(games), [games])
   const firstLoad = loading && games.length === 0
   const current = SHELVES.find((s) => s.key === shelf)!
   const shelfGames = groups[shelf]
@@ -132,7 +162,15 @@ export default function App() {
               <Stat value={groups.completed.length} label="completados" color="bg-emerald-400" />
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {canEdit && (
+              <button
+                onClick={() => setAddOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-sm font-semibold text-zinc-900 shadow transition hover:bg-zinc-200"
+              >
+                ＋ Agregar juego
+              </button>
+            )}
             {!usingSampleData &&
               (canEdit ? (
                 <button
@@ -268,6 +306,16 @@ export default function App() {
         }}
       />
       <CompleteDialog game={completing} onClose={() => setCompleting(null)} onConfirm={(g, d) => void completeGame(g, d)} />
+      {token && (
+        <AddGameDialog
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          games={games}
+          pendingCount={groups.pending.length}
+          platforms={platforms}
+          onSubmit={addGame}
+        />
+      )}
       <Toast toast={toast} onDismiss={dismissToast} />
     </div>
   )

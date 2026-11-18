@@ -14,6 +14,8 @@ Tablero para ver mi backlog de juegos. Lee los datos desde una Google Sheet (pes
 
 **Carátulas:** se buscan solas en Wikipedia y se guardan en el navegador. Si alguna sale mal o no aparece, agregá una columna **Portada** en la planilla con la URL (https) de la imagen que quieras para ese juego.
 
+**Agregar juegos** (con edición activa): el buscador autocompleta nombre y carátula desde Wikipedia (sin claves ni cuentas). Elegís la consola, el time to beat (hay un link a HowLongToBeat para consultarlo) y en qué lugar de la cola de pendientes va. Si la planilla tiene la columna **Portada**, la carátula elegida queda guardada ahí.
+
 ## Configurar Apps Script (una sola vez)
 
 1. En la planilla: **Extensiones → Apps Script**.

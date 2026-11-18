@@ -133,6 +133,65 @@ async function lookup(title: string): Promise<string | null> {
   return hit?.thumbnail?.source ?? null
 }
 
+// ───────── Autocompletado al agregar juegos ─────────
+
+export interface WikiResult {
+  pageId: number
+  name: string
+  /** Descripción corta de Wikipedia, ej. "2017 video game". */
+  description: string | null
+  year: number | null
+  cover: string | null
+}
+
+export class SearchError extends Error {}
+
+const isGame = (description?: string) => /\bvideo game$/i.test(description ?? '')
+
+/** Busca juegos en Wikipedia: nombre, año y carátula. Sin claves ni cuentas. */
+export async function searchWikipedia(q: string, signal?: AbortSignal): Promise<WikiResult[]> {
+  const params = new URLSearchParams({
+    action: 'query',
+    format: 'json',
+    formatversion: '2',
+    origin: '*',
+    generator: 'search',
+    gsrsearch: `${q} video game`,
+    gsrlimit: '10',
+    gsrnamespace: '0',
+    prop: 'pageimages|description',
+    piprop: 'thumbnail',
+    pithumbsize: '600',
+    pilicense: 'any',
+  })
+  let res: Response
+  try {
+    res = await fetch(`https://en.wikipedia.org/w/api.php?${params}`, { signal })
+  } catch (e) {
+    if (signal?.aborted) throw e
+    throw new SearchError('Wikipedia no respondió. Probá de nuevo en unos segundos.')
+  }
+  if (res.status === 429) throw new SearchError('Wikipedia está ocupada. Probá de nuevo en unos segundos.')
+  if (!res.ok) throw new SearchError('No se pudo buscar en Wikipedia.')
+
+  const data = (await res.json()) as { query?: { pages?: (WikiPage & { pageid: number; description?: string })[] } }
+  return (data.query?.pages ?? [])
+    .filter((p) => !/^list of/i.test(p.title))
+    // Primero los que Wikipedia describe como juego ("2017 video game"),
+    // después personajes, bandas sonoras, etc.
+    .sort((a, b) => Number(!isGame(a.description)) - Number(!isGame(b.description)) || a.index - b.index)
+    .slice(0, 8)
+    .map((p) => {
+      return {
+        pageId: p.pageid,
+        name: p.title.replace(/\s*\((?:\d{4} )?video game\)$/i, ''),
+        description: p.description ?? null,
+        year: Number(p.description?.match(/\b(19[7-9]\d|20\d\d)\b/)?.[1]) || null,
+        cover: p.thumbnail?.source ?? null,
+      }
+    })
+}
+
 /** Carátula de un juego. `override` = URL manual de la columna "Portada". */
 export function useCover(title: string, override?: string | null) {
   const ref = useRef<HTMLDivElement>(null)

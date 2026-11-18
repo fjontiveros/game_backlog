@@ -5,10 +5,11 @@ interface Props {
   onClose: () => void
   title: string
   children: ReactNode
+  wide?: boolean
 }
 
 /** Modal basado en <dialog> nativo: Esc cierra, foco atrapado, accesible. */
-export function Dialog({ open, onClose, title, children }: Props) {
+export function Dialog({ open, onClose, title, children, wide = false }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -23,7 +24,7 @@ export function Dialog({ open, onClose, title, children }: Props) {
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()} // clic en el fondo
-      className="m-auto w-[min(26rem,calc(100vw-2rem))] rounded-3xl bg-zinc-900 p-0 text-zinc-100 shadow-2xl ring-1 ring-white/10 backdrop:bg-black/70 backdrop:backdrop-blur-sm"
+      className={`m-auto ${wide ? 'w-[min(34rem,calc(100vw-2rem))]' : 'w-[min(26rem,calc(100vw-2rem))]'} rounded-3xl bg-zinc-900 p-0 text-zinc-100 shadow-2xl ring-1 ring-white/10 backdrop:bg-black/70 backdrop:backdrop-blur-sm`}
     >
       {open && (
         <div className="p-6">

@@ -61,7 +61,7 @@ export function setToken(token: string | null) {
 
 // ───────── Escritura ─────────
 
-export type Action = 'ping' | 'start' | 'complete' | 'unstart' | 'uncomplete'
+export type Action = 'ping' | 'start' | 'complete' | 'unstart' | 'uncomplete' | 'add'
 
 export class ApiError extends Error {
   constructor(
@@ -79,12 +79,25 @@ interface PostResult {
   code?: string
 }
 
+export interface NewGame {
+  title: string
+  platform: string
+  timeToBeat: number | null
+  cover: string | null
+  /** 1 = primero de la cola de pendientes. */
+  position: number
+}
+
 /**
  * Llama a una acción del Apps Script. El token va en el cuerpo (nunca en la
  * URL) y como text/plain para evitar el preflight de CORS, que Apps Script
  * no soporta.
  */
-export async function postAction(action: Action, token: string, payload: { id?: string; date?: string } = {}): Promise<Game | null> {
+export async function postAction(action: Action, token: string, payload: { id?: string; date?: string } | NewGame = {}): Promise<Game | null> {
+  return (await call(action, token, payload)).game ?? null
+}
+
+async function call(action: Action, token: string, payload: object): Promise<PostResult> {
   if (!API_URL) throw new ApiError('No hay planilla configurada.')
 
   let res: Response
@@ -102,5 +115,5 @@ export async function postAction(action: Action, token: string, payload: { id?: 
 
   const data = (await res.json()) as PostResult
   if (!data.ok) throw new ApiError(data.error ?? 'No se pudo guardar.', data.code)
-  return data.game ?? null
+  return data
 }
